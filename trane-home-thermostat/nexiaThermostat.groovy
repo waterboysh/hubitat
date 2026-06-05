@@ -16,7 +16,7 @@
  *  2026-06-04  Codex        Add compressor speed attribute
  *  2026-06-05  Codex        Add selectable logging levels
  */
-static String version()	{  return '1.1'  }
+static String version()	{  return '1.1.0'  }
 
 metadata {
     definition (name: "Nexia Thermostat", 
