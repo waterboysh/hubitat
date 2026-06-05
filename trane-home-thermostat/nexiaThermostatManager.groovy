@@ -25,7 +25,7 @@
  *  2026-06-05  Codex        Categorize app under Integrations
  *
  */
-static String version()	{  return '1.1' }
+static String version()	{  return '1.1.0' }
 
 definition(
     name: "Nexia Thermostat Manager",
