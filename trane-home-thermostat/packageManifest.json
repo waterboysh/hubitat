@@ -1,0 +1,32 @@
+{
+  "packageName": "Nexia Thermostat Manager / Trane Home",
+  "releaseNotes": "Added support for newer Trane Home thermostats. Added setpoint range handling from thermostat-reported limits. Added compressor speed as an optional attribute when reported by the thermostat. Added configurable driver logging levels. Updated app category for newer Hubitat releases.",
+  "documentationLink": "https://github.com/waterboysh/hubitat/tree/main/trane-home-thermostat",
+  "communityLink": "https://community.hubitat.com/t/re-release-nexia-thermostat-manager-trane-home/164454",
+  "author": "waterboysh",
+  "version": "1.1.0",
+  "minimumHEVersion": "2.2.0",
+  "dateReleased": "2026-06-05",
+  "licenseFile": "https://raw.githubusercontent.com/waterboysh/hubitat/main/LICENSE",
+  "apps": [
+    {
+      "id": "45cfa4e5-2ce5-4173-83f3-0a98bdc9f02f",
+      "name": "Nexia Thermostat Manager",
+      "namespace": "trentfoley",
+      "location": "https://raw.githubusercontent.com/waterboysh/hubitat/main/trane-home-thermostat/nexiaThermostatManager.groovy",
+      "required": true,
+      "oauth": false,
+      "description": "Parent app that discovers Trane Home / American Standard Home thermostats and creates child thermostat devices."
+    }
+  ],
+  "drivers": [
+    {
+      "id": "0bae248f-9c02-4833-958d-4ad489c135b8",
+      "name": "Nexia Thermostat",
+      "namespace": "trentfoley",
+      "location": "https://raw.githubusercontent.com/waterboysh/hubitat/main/trane-home-thermostat/nexiaThermostat.groovy",
+      "required": true,
+      "description": "Child thermostat driver for Nexia / Trane Home thermostats."
+    }
+  ]
+}
