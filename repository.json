@@ -1,0 +1,17 @@
+{
+  "author": "waterboysh",
+  "gitHubUrl": "https://github.com/waterboysh/hubitat",
+  "packages": [
+    {
+      "name": "Nexia Thermostat Manager / Trane Home",
+      "category": "Integrations",
+      "location": "https://raw.githubusercontent.com/waterboysh/hubitat/main/trane-home-thermostat/packageManifest.json",
+      "description": "Trane Home / American Standard Home thermostat integration for Hubitat.",
+      "tags": [
+        "Climate Control",
+        "Cloud",
+        "Temperature & Humidity"
+      ]
+    }
+  ]
+}
