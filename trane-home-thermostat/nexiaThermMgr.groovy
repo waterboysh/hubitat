@@ -34,7 +34,7 @@ definition(
     description: "Connect your Nexia thermostat to Hubitat.",
     category: "Convenience",
     menu: "Integrations",
-	importUrl:"https://raw.githubusercontent.com/thebearmay/hubitat/main/STPorts/nexiaThermMgr.groovy",    
+	importUrl:"https://raw.githubusercontent.com/waterboysh/hubitat/main/trane-home-thermostat/nexiaThermMgr.groovy",    
     iconUrl: "http://lh4.ggpht.com/oMx3-nlICwLmUxpDhTXWsZ6Ocuzu9P2yfz9jpXBx1rhrW_Vcj94kPl2M9ooApckK6TM1=w60",
     iconX2Url: "https://www.trane.com/content/dam/Trane/residential/products/nexia/medium/TR_Nexia%20-%20Medium.jpg",
     iconX3Url: "https://www.trane.com/content/dam/Trane/residential/products/nexia/medium/TR_Nexia%20-%20Medium.jpg",
