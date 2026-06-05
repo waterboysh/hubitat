@@ -22,7 +22,7 @@ metadata {
     definition (name: "Nexia Thermostat", 
                 namespace: "trentfoley", 
                 author: "Trent Foley",
-                importUrl:"https://raw.githubusercontent.com/thebearmay/hubitat/main/STPorts/nexiaThermostat.groovy",                
+                importUrl:"https://raw.githubusercontent.com/waterboysh/hubitat/main/trane-home-thermostat/nexiaThermostat.groovy",                
                ) {
         capability "Actuator"
         capability "Temperature Measurement"
