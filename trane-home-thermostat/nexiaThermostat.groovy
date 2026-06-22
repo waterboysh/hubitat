@@ -15,8 +15,9 @@
  *  2026-06-04  Codex        Make emergency heat support configurable
  *  2026-06-04  Codex        Add compressor speed attribute
  *  2026-06-05  Codex        Add selectable logging levels
+ *  2026-06-21  Codex        Only publish polled events when values change and update debug logging output
  */
-static String version()	{  return '1.1.0'  }
+static String version()	{  return '1.1.1'  }
 
 metadata {
     definition (name: "Nexia Thermostat", 
@@ -46,8 +47,8 @@ metadata {
 
 preferences {
     input "pollInterval", "enum", title:"Enter Poll Cycle", options:['1 Minute','5 Minutes','10 Minutes','15 Minutes','30 Minutes','1 Hour','3 Hours'], defaultValue:'1 Minute', submitOnChange:true
-    input "emergencyHeatSupported", "bool", title:"Emergency Heat Mode Supported", defaultValue:false, submitOnChange:true
-    input "loggingLevel", "enum", title:"Logging Level", options:["Off", "Info", "Debug for 30 minutes", "Debug for 4 hours", "Debug for 24 hours", "Debug always"], defaultValue:"Off", submitOnChange:true
+    input "emergencyHeatSupported", "bool", title:"Emergency Heat Mode Supported", description:"Enable this option only if emergency heat can be enabled on your thermostat via a mode change, and not by going into the thermostat settings.", defaultValue:false, submitOnChange:true
+    input "loggingLevel", "enum", title:"Logging Level", description:"Timed debug options automatically return to Info logging when the selected time expires.", options:["Off", "Info", "Debug for 30 minutes", "Debug for 4 hours", "Debug for 24 hours", "Debug always"], defaultValue:"Off", submitOnChange:true
 
 }
 
@@ -132,6 +133,69 @@ private void configureLogging() {
     }
 }
 
+private String normalizedEventValue(value) {
+    if(value == null) return null
+    if(value instanceof Number) {
+        return value.toBigDecimal().stripTrailingZeros().toPlainString()
+    }
+
+    def stringValue = value.toString().trim()
+    try {
+        return stringValue.toBigDecimal().stripTrailingZeros().toPlainString()
+    }
+    catch(ignored) {
+        return stringValue
+    }
+}
+
+private Boolean sendEventIfChanged(String attributeName, value, String unit = null) {
+    if(value == null) return false
+
+    def oldValue = device.currentValue(attributeName)
+    if(normalizedEventValue(oldValue) == normalizedEventValue(value)) return false
+
+    def event = [name: attributeName, value: value]
+    if(unit) event.unit = unit
+
+    try {
+        sendEvent(event)
+    }
+    catch(e) {
+        log.warn "Hubitat blocked ${attributeName} update because this device is over its event/load limit. Current value: ${oldValue}; polled value: ${value}."
+        logDebug("sendEvent failed for ${attributeName}: ${e}")
+        return false
+    }
+
+    def unitText = unit ? " ${unit}" : ""
+    if(oldValue != null) {
+        logInfo("${attributeName} changed from ${oldValue}${unitText} to ${value}${unitText}")
+    } else {
+        logDebug("${attributeName} initialized to ${value}${unitText}")
+    }
+
+    return true
+}
+
+private Map pollAttribute(String attributeName, value, String unit = null) {
+    return [name: attributeName, value: value, unit: unit]
+}
+
+private String formatPollDebugValue(Map attribute) {
+    if(attribute.value == null) {
+        return "${attribute.name}: null [NOT REPORTED]"
+    }
+
+    def oldValue = device.currentValue(attribute.name)
+    def unitText = attribute.unit ? " ${attribute.unit}" : ""
+    def changeText = (normalizedEventValue(oldValue) == normalizedEventValue(attribute.value)) ? "[NOT CHANGED]" : "[CHANGED from ${oldValue}]"
+    return "${attribute.name}: ${attribute.value}${unitText} ${changeText}"
+}
+
+private void logPollDebug(List attributes) {
+    if(!isDebugLoggingEnabled()) return
+    log.debug "poll response: ${attributes.collect { formatPollDebugValue(it) }.join(', ')}"
+}
+
 // This cloud driver does not receive LAN parse messages, but Hubitat expects
 // parse() to exist for many driver types.
 def parse(String description) {
@@ -148,35 +212,48 @@ def refresh() {
 def poll() {
     logDebug("poll()")
     def data = parent.pollChild(this)
-    logDebug("${data}")
 
     if(data) {
-        def oldTemperature = device.currentValue("temperature")
-        def oldHumidity = device.currentValue("humidity")
-        def oldOperatingState = device.currentValue("thermostatOperatingState")
+        Integer changedCount = 0
+        def pollAttributes = [
+            pollAttribute("temperature", data.temperature, "°F"),
+            pollAttribute("heatingSetpoint", data.heatingSetpoint, "°F"),
+            pollAttribute("coolingSetpoint", data.coolingSetpoint, "°F"),
+            pollAttribute("thermostatSetpoint", data.thermostatSetpoint, "°F"),
+            pollAttribute("thermostatMode", data.thermostatMode),
+            pollAttribute("thermostatFanMode", data.thermostatFanMode),
+            pollAttribute("thermostatOperatingState", data.thermostatOperatingState),
+            pollAttribute("humidity", data.humidity, "%"),
+            pollAttribute("activeMode", data.activeMode),
+            pollAttribute("outdoorTemperature", data.outdoorTemperature, "°F"),
+            pollAttribute("holdStatus", data.setpointStatus),
+            pollAttribute("compressorSpeed", data.compressorSpeed)
+        ]
+
+        logPollDebug(pollAttributes)
+
         // The parent app normalizes Trane Home JSON into this map. The driver
         // owns publishing those values as Hubitat Current States.
-        sendEvent(name: "temperature", value: data.temperature, unit: "°F")
-            sendEvent(name: "heatingSetpoint", value: data.heatingSetpoint, unit: "°F")
-            sendEvent(name: "coolingSetpoint", value: data.coolingSetpoint, unit: "°F")
-            sendEvent(name: "thermostatSetpoint", value: data.thermostatSetpoint, unit: "°F")
+            if(sendEventIfChanged("temperature", data.temperature, "°F")) changedCount++
+            if(sendEventIfChanged("heatingSetpoint", data.heatingSetpoint, "°F")) changedCount++
+            if(sendEventIfChanged("coolingSetpoint", data.coolingSetpoint, "°F")) changedCount++
+            if(sendEventIfChanged("thermostatSetpoint", data.thermostatSetpoint, "°F")) changedCount++
             state.minHeatingSetpoint = data.minHeatingSetpoint ?: 55
             state.maxHeatingSetpoint = data.maxHeatingSetpoint ?: 90
             state.minCoolingSetpoint = data.minCoolingSetpoint ?: 60
             state.maxCoolingSetpoint = data.maxCoolingSetpoint ?: 99
-            sendEvent(name: "thermostatMode", value: data.thermostatMode)
-            sendEvent(name: "thermostatFanMode", value: data.thermostatFanMode)
-            sendEvent(name: "thermostatOperatingState", value: data.thermostatOperatingState)
-            sendEvent(name: "humidity", value: data.humidity, unit: "%")
-            sendEvent(name: "activeMode", value: data.activeMode)
-            sendEvent(name: "outdoorTemperature", value: data.outdoorTemperature, unit: "°F")
-            sendEvent(name: "holdStatus", value: data.setpointStatus)
+            if(sendEventIfChanged("thermostatMode", data.thermostatMode)) changedCount++
+            if(sendEventIfChanged("thermostatFanMode", data.thermostatFanMode)) changedCount++
+            if(sendEventIfChanged("thermostatOperatingState", data.thermostatOperatingState)) changedCount++
+            if(sendEventIfChanged("humidity", data.humidity, "%")) changedCount++
+            if(sendEventIfChanged("activeMode", data.activeMode)) changedCount++
+            if(sendEventIfChanged("outdoorTemperature", data.outdoorTemperature, "°F")) changedCount++
+            if(sendEventIfChanged("holdStatus", data.setpointStatus)) changedCount++
             if(data.compressorSpeed != null) {
-                sendEvent(name: "compressorSpeed", value: data.compressorSpeed)
+                if(sendEventIfChanged("compressorSpeed", data.compressorSpeed)) changedCount++
             }
-            if(oldTemperature != null && oldTemperature?.toString() != data.temperature?.toString()) logInfo("Temperature changed from ${oldTemperature} to ${data.temperature}")
-            if(oldHumidity != null && oldHumidity?.toString() != data.humidity?.toString()) logInfo("Humidity changed from ${oldHumidity} to ${data.humidity}")
-            if(oldOperatingState != null && oldOperatingState?.toString() != data.thermostatOperatingState?.toString()) logInfo("Operating state changed from ${oldOperatingState} to ${data.thermostatOperatingState}")
+
+            logDebug("poll() updated ${changedCount} value(s)")
     } else {
         log.error "ERROR: Device connection removed? No data found for ${device.deviceNetworkId} after polling"
     }
@@ -316,7 +393,6 @@ def fanAuto() { setThermostatFanMode("auto") }
 def fanCirculate() { setThermostatFanMode("circulate") }
 
 void logsOff(){
-    device.updateSetting("loggingLevel",[value:"Off",type:"enum"])
+    device.updateSetting("loggingLevel",[value:"Info",type:"enum"])
 }
-
 
