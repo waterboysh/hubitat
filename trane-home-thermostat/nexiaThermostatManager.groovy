@@ -35,7 +35,7 @@ definition(
     description: "Connect your Nexia thermostat to Hubitat.",
     category: "Convenience",
     menu: "Integrations",
-	importUrl:"https://raw.githubusercontent.com/waterboysh/hubitat/testing/trane-home-thermostat/nexiaThermostatManager.groovy",    
+	importUrl:"https://raw.githubusercontent.com/waterboysh/hubitat/main/trane-home-thermostat/nexiaThermostatManager.groovy",    
     iconUrl: "http://lh4.ggpht.com/oMx3-nlICwLmUxpDhTXWsZ6Ocuzu9P2yfz9jpXBx1rhrW_Vcj94kPl2M9ooApckK6TM1=w60",
     iconX2Url: "https://www.trane.com/content/dam/Trane/residential/products/nexia/medium/TR_Nexia%20-%20Medium.jpg",
     iconX3Url: "https://www.trane.com/content/dam/Trane/residential/products/nexia/medium/TR_Nexia%20-%20Medium.jpg",
@@ -61,12 +61,10 @@ def getServerUrl() {
 }
 
 def installed() {
-    if(debugEnabled) log.debug("installed()")
     initialize()
 }
 
 def updated() {
-    if(debugEnabled) log.debug("updated()")
     unsubscribe()
     initialize()
 }
@@ -144,7 +142,6 @@ def initialize() {
 
 def initializeChildDevices() {
     def children = getChildDevices() ?: []
-    debugStage("child initialize", "devices=${children.size()}")
     children.each { device ->
         try { device.initialize() }
         catch(e) { logStageException("child initialize", e) }
@@ -168,20 +165,11 @@ private String dataShape(value) {
 
 // Do not log bodies, request headers, credentials, cookies, tokens or full exception messages.
 private responseData(String stage, resp) {
-    debugStage(stage, "HTTP ${resp.status}; response shape=${dataShape(resp)}")
-    if(debugEnabled) {
-        try {
-            def contentType = resp.getHeaders('Content-Type')?.find { true }?.value
-            def mediaType = contentType?.toString()?.split(';')?.getAt(0)?.trim()
-            // Log only a MIME type, never arbitrary response-header contents.
-            if(mediaType && mediaType ==~ /[A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+/) {
-                debugStage(stage, "content type=${mediaType}")
-            }
-        } catch(ignored) { /* Header diagnostics must never break a request. */ }
-    }
-    def data = resp.data
-    debugStage(stage, "body shape=${dataShape(data)}")
-    return data
+    return resp.data
+}
+
+private debugResponseDetails(String stage, resp, data) {
+    debugStage(stage, "HTTP ${resp.status}; content type=${responseContentType(resp) ?: 'unknown'}; body shape=${dataShape(data)}")
 }
 
 private requireStatus(resp, List allowed) {
@@ -267,14 +255,14 @@ private String httpGetText(String path, String stage) {
         def params = [uri: serverUrl, headers: getDefaultHeaders(), textParser: true]
         if(path != null) params.path = path
         httpGet(params) { resp ->
-            debugStage(stage, "HTTP ${resp.status}; response shape=${dataShape(resp)}; content type=${responseContentType(resp) ?: 'unknown'}")
             requireStatus(resp, [200])
             updateCookies(resp)
             def data = resp.data
-            debugStage(stage, "body shape=${dataShape(data)}")
             body = readBodyText(data)
-            if(!body) validationFailure("Empty text response during ${stage}")
-            debugStage(stage, "body characters=${body.length()}")
+            if(!body) {
+                debugResponseDetails(stage, resp, data)
+                validationFailure("Empty text response during ${stage}")
+            }
         }
     } catch(e) {
         logStageException(stage, e)
@@ -318,7 +306,6 @@ private discoverRoutesFromText(String body) {
         def houseId = climate.group(1)
         state.thermostatsPath = "/houses/${houseId}/xxl_thermostats"
         state.zonesPath = "/houses/${houseId}/xxl_zones"
-        debugStage("discovery", "Legacy climate route found")
     }
 
     def diagnostic = body =~ /(?i)\/houses\/(\d+)\/diagnostics\/thermostats\/([^\/?\."'<>\s]+)/
@@ -346,7 +333,6 @@ private validateThermostat(stat, boolean diagnostic) {
         }
     }
     if(zoneIds.unique().size() != stat.zones.size()) validationFailure("Duplicate zone IDs")
-    debugStage("thermostat validation", "route=${diagnostic ? 'diagnostics' : 'legacy'}; zones=${stat.zones.size()}; readings valid")
 }
 
 private boolean validIdentifier(value) {
@@ -355,14 +341,12 @@ private boolean validIdentifier(value) {
 
 private registerDiagnosticThermostat(houseId, thermostatId) {
     def thermId = thermostatId.toString()
-    def isNewThermostat = !state.diagnosticThermostats?.containsKey(thermId)
     state.diagnosticThermostats[thermId] = [
         id: thermId,
         houseId: houseId.toString(),
         path: "/houses/${houseId}/diagnostics/thermostats/${thermId}.json",
         updatePath: "/houses/${houseId}/diagnostics/thermostats/${thermId}"
     ]
-    if(isNewThermostat) debugStage("discovery", "Diagnostics thermostat link found")
 }
 
 private discoverDiagnosticThermostats() {
@@ -376,9 +360,6 @@ private discoverDiagnosticThermostats() {
     def climateBody = httpGetText(climatePath, "climate GET / diagnostics discovery")
     if(climateBody) discoverRoutesFromText(climateBody)
 
-    if(debugEnabled && (!state.diagnosticThermostats || state.diagnosticThermostats.size() == 0)) {
-        log.debug("No diagnostics thermostat IDs discovered from climate page attributes.")
-    }
 }
 
 private diagnosticDeviceCandidates() {
@@ -407,7 +388,6 @@ private def addMultipleDevices(dni, statname) {
             device = addChildDevice(childNamespace, childName, dni, [ label: "${childName} (${statname})" ])
             if(device) {
                 log.info("Created child device ${device.displayName}")
-                if(debugEnabled) log.debug("Created ${device.displayName} with device network id: ${dni}")
             } else {
                 log.error("Child device creation returned no device for ${statname}")
             }
@@ -416,8 +396,6 @@ private def addMultipleDevices(dni, statname) {
             logStageException("child device creation (verify Nexia Thermostat driver is installed)", e)
         }
     } else {
-        log.info("Child device already exists: ${device.displayName}")
-        if(debugEnabled) log.debug("Found already existing ${device.displayName} with device network id: ${dni}")
     }
     return device
 }
@@ -432,7 +410,6 @@ private updateCookies(response) {
         def cookieValue = it.value.split(';')[0]
         def cookieName = cookieValue.split('=')[0]
         state.cookies[(cookieName)] = cookieValue
-        if(debugEnabled) log.debug("Cookie updated: ${cookieName}")
     }
 }
 
@@ -490,7 +467,7 @@ private boolean refreshAuthToken() {
         stage = "login HTML parsing"
         state.AuthToken = htmlNamedAttribute(loginBody, "authenticity_token", "value")
         state.csrfToken = htmlNamedAttribute(loginBody, "csrf-token", "content")
-        debugStage(stage, "authenticity token present=${!!state.AuthToken}; CSRF token present=${!!state.csrfToken}; cookies=${state.cookies.size()}")
+        debugStage(stage, "Login form tokens found")
         if(!state.AuthToken) validationFailure("Missing login authenticity token")
         stage = "session POST"
         httpPost([
@@ -500,7 +477,6 @@ private boolean refreshAuthToken() {
             body: [utf8: '✓', authenticity_token: state.AuthToken,
                    login: settings.username, password: settings.password]
         ]) { sessionResp ->
-            debugStage(stage, "HTTP ${sessionResp.status}; response shape=${dataShape(sessionResp)}; content type=${responseContentType(sessionResp) ?: 'unknown'}")
             requireStatus(sessionResp, [200, 302])
             updateCookies(sessionResp)
             def location = responseLocation(sessionResp)
@@ -511,7 +487,7 @@ private boolean refreshAuthToken() {
                 submitted = true
             }
         }
-        if(submitted) debugStage("login", "Credentials submitted; authenticated page/data still requires verification")
+        if(submitted) debugStage("login", "Credentials accepted; verifying dashboard access")
     } catch(e) {
         logStageException(stage, e)
     }
@@ -529,8 +505,11 @@ private boolean requestThermostats(Closure closure, boolean retried = false) {
             def data = responseData("legacy thermostats GET", resp)
             def unauthenticated = resp.status in [302, 401] || looksUnauthenticated(resp)
             if(resp.status == 200 && !unauthenticated) {
-                if(!(data instanceof List)) validationFailure("Expected thermostat list")
-                debugStage("legacy thermostats GET", "records=${data.size()}")
+                if(!(data instanceof List)) {
+                    debugResponseDetails("legacy thermostats GET", resp, data)
+                    validationFailure("Expected thermostat list")
+                }
+                if(!state.initializationReady) debugStage("thermostat discovery", "legacy records=${data.size()}")
                 // Supply the already-read data to avoid accessing the parser result twice.
                 closure([status: 200, data: data])
                 received = true
@@ -538,6 +517,7 @@ private boolean requestThermostats(Closure closure, boolean retried = false) {
                 debugStage("legacy thermostats GET", "Session appears expired; attempting one login and route-discovery retry")
                 if(authenticateAndDiscoverRoutes()) received = requestThermostats(closure, true)
             } else {
+                debugResponseDetails("legacy thermostats GET", resp, data)
                 log.error("Unexpected response while requesting thermostats: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
             }
         }
@@ -552,7 +532,6 @@ private boolean requestThermostats(Closure closure, boolean retried = false) {
 }
 
 private requestThermostat(deviceNetworkId, Closure closure) {
-    if(debugEnabled) log.debug("requestThermostat(${deviceNetworkId})")
     requestThermostats { resp ->
         def stat = resp.data.find { it -> getDeviceNetworkId(it.id) == deviceNetworkId }
         if (!stat) {
@@ -576,15 +555,17 @@ private boolean requestDiagnosticThermostat(thermId, Closure closure, boolean re
             def unauthenticated = resp.status in [302, 401] || looksUnauthenticated(resp)
             if(resp.status == 200 && !unauthenticated) {
                 if(!(data instanceof Map) || !(data.zones instanceof List)) {
+                    debugResponseDetails("diagnostics thermostat GET", resp, data)
                     validationFailure("Expected diagnostics object with zones")
                 }
-                debugStage("diagnostics thermostat GET", "zones=${data.zones.size()}")
+                if(!state.initializationReady) debugStage("thermostat discovery", "diagnostics zones=${data.zones.size()}")
                 closure(data)
                 received = true
             } else if(unauthenticated && !retried) {
                 debugStage("diagnostics thermostat GET", "Session appears expired; attempting one login and route-discovery retry")
                 if(authenticateAndDiscoverRoutes()) received = requestDiagnosticThermostat(thermId, closure, true)
             } else {
+                debugResponseDetails("diagnostics thermostat GET", resp, data)
                 log.error("Unexpected response while requesting diagnostics thermostat: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
             }
         }
@@ -707,8 +688,6 @@ private pollDiagnosticChild(child) {
     def zoneId = rawDeviceId.split('_').size() > 1 ? rawDeviceId.split('_')[1] : null
     def statData = [:]
 
-    if(debugEnabled) log.debug("pollDiagnosticChild(${thermId}, ${zoneId})")
-
     requestDiagnosticThermostat(thermId) { stat ->
         def zone = zoneId ? stat.zones.find { it.zone_id.toString() == zoneId.toString() } : stat.zones[0]
         if(!zone) {
@@ -760,8 +739,6 @@ def pollChild(child) {
     //if zoned, take off zone id... performs a repetitive update due to zoning, fix later
     def deviceNetworkId = ((child.device.deviceNetworkId).split('_'))[0]
     def zonedBool = ((child.device.deviceNetworkId).split('_')).size()
-    if(debugEnabled) log.debug("ZoneBool ${zonedBool} pollChild(${deviceNetworkId})")
-
     def statData = [:]
 
     requestThermostat(deviceNetworkId) { stat ->
@@ -778,8 +755,6 @@ def pollChild(child) {
             "Cooling": "cooling",
             "Fan Running": "fan only"
         ]
-        debugStage("legacy poll", "Zone selected; converting thermostat readings")
-
         statData = [
             temperature: zone.temperature.toInteger(),
             heatingSetpoint: zone.heating_setpoint.toInteger(),
