@@ -155,16 +155,20 @@ private debugStage(String stage, String message) {
     if(debugEnabled) log.debug("[${stage}] ${message}")
 }
 
-private String dataType(value) {
+private String dataShape(value) {
     if(value == null) return "null"
-    // Hubitat's sandbox rejects an explicit java.lang.Class expression.
-    // getClass().name reports the type without referencing that forbidden class.
-    return value.getClass().name
+    if(value instanceof Map) return "map (${value.size()} entries)"
+    if(value instanceof List) return "list (${value.size()} entries)"
+    if(value instanceof CharSequence) return "text (${value.length()} characters)"
+    if(value instanceof Number) return "number"
+    if(value instanceof Boolean) return "boolean"
+    // Hubitat forbids both java.lang.Class expressions and getClass() calls.
+    return "unsupported object"
 }
 
 // Do not log bodies, request headers, credentials, cookies, tokens or full exception messages.
 private responseData(String stage, resp) {
-    debugStage(stage, "HTTP ${resp.status}; response type=${dataType(resp)}")
+    debugStage(stage, "HTTP ${resp.status}; response shape=${dataShape(resp)}")
     if(debugEnabled) {
         try {
             def contentType = resp.getHeaders('Content-Type')?.find { true }?.value
@@ -176,7 +180,7 @@ private responseData(String stage, resp) {
         } catch(ignored) { /* Header diagnostics must never break a request. */ }
     }
     def data = resp.data
-    debugStage(stage, "body type=${dataType(data)}")
+    debugStage(stage, "body shape=${dataShape(data)}")
     return data
 }
 
@@ -207,7 +211,7 @@ private logStageException(String stage, e) {
     }
     def source = e.stackTrace?.find { it.fileName?.endsWith(".groovy") }
     def line = source ? "; Groovy line=${source.lineNumber}" : ""
-    log.error("[${stage}] ${e.getClass().name}${line}. Response details are available with debug logging enabled.")
+    log.error("[${stage}] Request or data-processing exception${line}. Response details are available with debug logging enabled.")
 }
 
 private String readBodyText(data) {
@@ -263,11 +267,11 @@ private String httpGetText(String path, String stage) {
         def params = [uri: serverUrl, headers: getDefaultHeaders(), textParser: true]
         if(path != null) params.path = path
         httpGet(params) { resp ->
-            debugStage(stage, "HTTP ${resp.status}; response type=${dataType(resp)}; content type=${responseContentType(resp) ?: 'unknown'}")
+            debugStage(stage, "HTTP ${resp.status}; response shape=${dataShape(resp)}; content type=${responseContentType(resp) ?: 'unknown'}")
             requireStatus(resp, [200])
             updateCookies(resp)
             def data = resp.data
-            debugStage(stage, "body type=${dataType(data)}")
+            debugStage(stage, "body shape=${dataShape(data)}")
             body = readBodyText(data)
             if(!body) validationFailure("Empty text response during ${stage}")
             debugStage(stage, "body characters=${body.length()}")
@@ -496,7 +500,7 @@ private boolean refreshAuthToken() {
             body: [utf8: '✓', authenticity_token: state.AuthToken,
                    login: settings.username, password: settings.password]
         ]) { sessionResp ->
-            debugStage(stage, "HTTP ${sessionResp.status}; response type=${dataType(sessionResp)}; content type=${responseContentType(sessionResp) ?: 'unknown'}")
+            debugStage(stage, "HTTP ${sessionResp.status}; response shape=${dataShape(sessionResp)}; content type=${responseContentType(sessionResp) ?: 'unknown'}")
             requireStatus(sessionResp, [200, 302])
             updateCookies(sessionResp)
             def location = responseLocation(sessionResp)
