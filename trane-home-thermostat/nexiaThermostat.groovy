@@ -17,13 +17,13 @@
  *  2026-06-05  Codex        Add selectable logging levels
  *  2026-06-21  Codex        Only publish polled events when values change and update debug logging output
  */
-static String version()	{  return '1.1.1'  }
+static String version()	{  return '1.1.2'  }
 
 metadata {
     definition (name: "Nexia Thermostat", 
                 namespace: "trentfoley", 
                 author: "Trent Foley",
-                importUrl:"https://raw.githubusercontent.com/waterboysh/hubitat/main/trane-home-thermostat/nexiaThermostat.groovy",                
+                importUrl:"https://raw.githubusercontent.com/waterboysh/hubitat/testing/trane-home-thermostat/nexiaThermostat.groovy",                
                ) {
         capability "Actuator"
         capability "Temperature Measurement"
