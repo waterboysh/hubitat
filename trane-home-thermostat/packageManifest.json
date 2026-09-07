@@ -1,10 +1,10 @@
 {
   "packageName": "Nexia Thermostat Manager / Trane Home",
-  "releaseNotes": "Improves Trane Home login and thermostat discovery, adds automatic session recovery",
+  "releaseNotes": "Restore one-time session recovery for legacy polling and commands",
   "documentationLink": "https://github.com/waterboysh/hubitat/tree/main/trane-home-thermostat",
   "communityLink": "https://community.hubitat.com/t/re-release-nexia-thermostat-manager-trane-home/164454",
   "author": "waterboysh",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minimumHEVersion": "2.2.0",
   "dateReleased": "2026-09-07",
   "licenseFile": "https://raw.githubusercontent.com/waterboysh/hubitat/main/LICENSE",
