@@ -16,17 +16,16 @@
  *    Date: 2016-01-19
  *
  * **	Modifications **
- *	Date		Who		    Description
- *	2022-09-15	thebearmay	Port to Hubitat
- *	2022-09-16	thebearmay	Fix thermostatOperatingMode
- *  2022-10-04  thebearmay  Add permanent hold and return to schedule
- *  2022-10-07  thebearmay  Option to use American Standard Login
- *  2026-06-04  Codex        Add Trane Home diagnostics support for newer thermostats
- *  2026-06-05  Codex        Categorize app under Integrations
- *  2026-09-05  Codex        Merge plain-text HTML parsing and session recovery
+ *	Date		  Who		    Description
+ *	2022-09-15	  thebearmay	Port to Hubitat
+ *	2022-09-16	  thebearmay	Fix thermostatOperatingMode
+ *  2022-10-04    thebearmay    Add permanent hold and return to schedule
+ *  2022-10-07    thebearmay    Option to use American Standard Login
+ *  2026-06-04    Codex         Add Trane Home diagnostics support for newer thermostats
+ *  2026-09-05    Codex         Improve login, thermostat discovery, and session recovery for older thermostats
  *
  */
-static String version()	{  return '1.1.2' }
+static String version()	{  return '1.2.0' }
 
 definition(
     name: "Nexia Thermostat Manager",
