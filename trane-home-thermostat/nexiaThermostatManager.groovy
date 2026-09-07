@@ -16,16 +16,18 @@
  *    Date: 2016-01-19
  *
  * **	Modifications **
- *	Date		  Who		    Description
- *	2022-09-15	  thebearmay	Port to Hubitat
- *	2022-09-16	  thebearmay	Fix thermostatOperatingMode
- *  2022-10-04    thebearmay    Add permanent hold and return to schedule
- *  2022-10-07    thebearmay    Option to use American Standard Login
- *  2026-06-04    Codex         Add Trane Home diagnostics support for newer thermostats
- *  2026-09-05    Codex         Improve login, thermostat discovery, and session recovery for older thermostats
+ *	Date		Who		    Description
+ *	2022-09-15	thebearmay	Port to Hubitat
+ *	2022-09-16	thebearmay	Fix thermostatOperatingMode
+ *  2022-10-04  thebearmay  Add permanent hold and return to schedule
+ *  2022-10-07  thebearmay  Option to use American Standard Login
+ *  2026-06-04  Codex        Add Trane Home diagnostics support for newer thermostats
+ *  2026-06-05  Codex        Categorize app under Integrations
+ *  2026-09-05  Codex        Improve login, thermostat discovery, and session recovery for older thermostats
+ *  2026-09-07  Codex        Restore one-time session recovery for legacy polling and commands
  *
  */
-static String version()	{  return '1.2.0' }
+static String version()	{  return '1.2.1' }
 
 definition(
     name: "Nexia Thermostat Manager",
@@ -495,10 +497,17 @@ private boolean refreshAuthToken() {
 
 private boolean requestThermostats(Closure closure, boolean retried = false) {
     if(!state.thermostatsPath) {
-        log.error("Thermostat request skipped: no discovered thermostat path.")
+        if(!retried) {
+            log.warn("Legacy thermostat route is unavailable; re-authenticating and retrying once.")
+            if(authenticateAndDiscoverRoutes()) return requestThermostats(closure, true)
+        }
+        log.error("Thermostat request skipped: no discovered thermostat path after session recovery.")
         return false
     }
+
     boolean received = false
+    boolean retryNeeded = false
+    def thermostatData = null
     try {
         httpGet([uri: serverUrl, path: state.thermostatsPath, headers: getDefaultHeaders()]) { resp ->
             def data = responseData("legacy thermostats GET", resp)
@@ -506,25 +515,51 @@ private boolean requestThermostats(Closure closure, boolean retried = false) {
             if(resp.status == 200 && !unauthenticated) {
                 if(!(data instanceof List)) {
                     debugResponseDetails("legacy thermostats GET", resp, data)
-                    validationFailure("Expected thermostat list")
+                    if(!retried) {
+                        retryNeeded = true
+                    } else {
+                        log.error("Legacy thermostat request did not return a thermostat list after session recovery.")
+                    }
+                } else {
+                    thermostatData = data
+                    received = true
                 }
-                if(!state.initializationReady) debugStage("thermostat discovery", "legacy records=${data.size()}")
-                // Supply the already-read data to avoid accessing the parser result twice.
-                closure([status: 200, data: data])
-                received = true
-            } else if(unauthenticated && !retried) {
-                debugStage("legacy thermostats GET", "Session appears expired; attempting one login and route-discovery retry")
-                if(authenticateAndDiscoverRoutes()) received = requestThermostats(closure, true)
             } else {
                 debugResponseDetails("legacy thermostats GET", resp, data)
-                log.error("Unexpected response while requesting thermostats: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
+                if(!retried) {
+                    retryNeeded = true
+                } else {
+                    log.error("Unexpected response after legacy thermostat session recovery: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
+                }
             }
         }
     } catch(e) {
-        logStageException("legacy thermostats GET / data processing", e)
-        // Hubitat may throw for 401 instead of invoking the response callback.
-        if(exceptionStatus(e) == 401 && !retried && authenticateAndDiscoverRoutes()) {
-            received = requestThermostats(closure, true)
+        if(!retried) {
+            retryNeeded = true
+            debugStage("legacy thermostats GET", "Request exception; attempting one login and route-discovery retry")
+        } else {
+            logStageException("legacy thermostats GET after session recovery", e)
+        }
+    }
+
+    // Reauthenticate only after the original HTTP callback has completed. This
+    // avoids nesting the login and retry requests inside Hubitat's callback.
+    if(retryNeeded && !retried) {
+        log.warn("Legacy thermostat request appears unauthenticated; re-authenticating and retrying once.")
+        if(authenticateAndDiscoverRoutes()) return requestThermostats(closure, true)
+        log.error("Legacy thermostat session recovery failed.")
+        return false
+    }
+
+    // Keep thermostat conversion and child processing outside the HTTP catch so
+    // a genuine data-handling bug is not misidentified as an expired session.
+    if(received) {
+        if(!state.initializationReady) debugStage("thermostat discovery", "legacy records=${thermostatData.size()}")
+        try {
+            closure([status: 200, data: thermostatData])
+        } catch(e) {
+            logStageException("legacy thermostat data processing", e)
+            return false
         }
     }
     return received
@@ -788,15 +823,17 @@ private updateZone(zone, updateType, boolean retried = false) {
         body: zone
     ]
 
+    boolean succeeded = false
+    boolean retryNeeded = false
     try {
         httpPutJson(requestParams) { resp ->
             def unauthenticated = resp.status in [302, 401] || looksUnauthenticated(resp)
             if(resp.status == 200 && !unauthenticated) {
                 if(debugEnabled) log.debug("Zone update succeeded")
-            } else if(unauthenticated && !retried) {
-                if(authenticateAndDiscoverRoutes()) updateZone(zone, updateType, true)
+                succeeded = true
             } else {
-	        	    log.error("Unexpected response while attempting to update zone: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
+                if(!retried) retryNeeded = true
+                else log.error("Unexpected response after zone-update session recovery: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
             
             /*
             def zoneJson = new org.json.JSONObject(zone).toString()
@@ -812,11 +849,16 @@ private updateZone(zone, updateType, boolean retried = false) {
             }
         }
     } catch(e) {
-        logStageException("zone update", e)
-        if(exceptionStatus(e) == 401 && !retried && authenticateAndDiscoverRoutes()) {
-            updateZone(zone, updateType, true)
-        }
+        if(!retried) retryNeeded = true
+        else logStageException("zone update after session recovery", e)
     }
+
+    if(retryNeeded && !retried) {
+        log.warn("Legacy zone update appears unauthenticated; re-authenticating and retrying once.")
+        if(authenticateAndDiscoverRoutes()) return updateZone(zone, updateType, true)
+        log.error("Legacy zone-update session recovery failed.")
+    }
+    return succeeded
 }
 
 // updateType can be: "fan_mode"
@@ -829,23 +871,30 @@ private updateThermostat(stat, updateType, boolean retried = false) {
         body: stat
     ]
 
+    boolean succeeded = false
+    boolean retryNeeded = false
     try {
         httpPutJson(requestParams) { resp ->
             def unauthenticated = resp.status in [302, 401] || looksUnauthenticated(resp)
             if(resp.status == 200 && !unauthenticated) {
                 if(debugEnabled) log.debug("Thermostat update succeeded")
-            } else if(unauthenticated && !retried) {
-                if(authenticateAndDiscoverRoutes()) updateThermostat(stat, updateType, true)
+                succeeded = true
             } else {
-                log.error("Unexpected response while attempting to update thermostat: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
+                if(!retried) retryNeeded = true
+                else log.error("Unexpected response after thermostat-update session recovery: status ${resp.status}; content type ${responseContentType(resp) ?: 'unknown'}")
             }
         }
     } catch(e) {
-        logStageException("thermostat update", e)
-        if(exceptionStatus(e) == 401 && !retried && authenticateAndDiscoverRoutes()) {
-            updateThermostat(stat, updateType, true)
-        }
+        if(!retried) retryNeeded = true
+        else logStageException("thermostat update after session recovery", e)
     }
+
+    if(retryNeeded && !retried) {
+        log.warn("Legacy thermostat update appears unauthenticated; re-authenticating and retrying once.")
+        if(authenticateAndDiscoverRoutes()) return updateThermostat(stat, updateType, true)
+        log.error("Legacy thermostat-update session recovery failed.")
+    }
+    return succeeded
 }
 
 def setHeatingSetpoint(child, degreesF) {
