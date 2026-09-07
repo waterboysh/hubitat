@@ -1,12 +1,12 @@
 {
   "packageName": "Nexia Thermostat Manager / Trane Home",
-  "releaseNotes": "Only publish polled events when values change. This should reduce hub load.",
+  "releaseNotes": "Improves Trane Home login and thermostat discovery, adds automatic session recovery",
   "documentationLink": "https://github.com/waterboysh/hubitat/tree/main/trane-home-thermostat",
   "communityLink": "https://community.hubitat.com/t/re-release-nexia-thermostat-manager-trane-home/164454",
   "author": "waterboysh",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "minimumHEVersion": "2.2.0",
-  "dateReleased": "2026-06-21",
+  "dateReleased": "2026-09-07",
   "licenseFile": "https://raw.githubusercontent.com/waterboysh/hubitat/main/LICENSE",
   "apps": [
     {
